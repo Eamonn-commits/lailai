@@ -2,7 +2,17 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+* { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button, .tab, .staff-chip, .mode-btn, .btn-load, .btn-submit, .add-btn {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+}
+</style>
 <title>萊萊蔥抓餅｜每日營運記錄</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
@@ -1423,6 +1433,33 @@ function runSearch() {
 }
 
 
+
+// ══════════════════════════════
+// TOUCH & DEBOUNCE
+// ══════════════════════════════
+function debounce(fn, delay=600) {
+  let timer;
+  return function(...args) {
+    if (timer) return;
+    fn.apply(this, args);
+    timer = setTimeout(() => { timer = null; }, delay);
+  };
+}
+
+// 包裝 submit 函數防止重複點擊
+function wrapButtons() {
+  document.querySelectorAll('.btn-submit, .btn-load, .add-btn').forEach(btn => {
+    const orig = btn.onclick;
+    if (orig && !btn._wrapped) {
+      btn._wrapped = true;
+      btn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        btn.click();
+      }, { passive: false });
+    }
+  });
+}
+
 // ══════════════════════════════
 // DELETE
 // ══════════════════════════════
@@ -1526,17 +1563,18 @@ function removeStaffMember(idx) {
 updateHeaderDate();
 seedIfEmpty();
 syncFromSheets();
+setTimeout(wrapButtons, 500);
 
 // Set dates
 const t = today();
-document.getElementById('expenseDate').value = '2025-04-07';
-document.getElementById('perfDate').value = '2025-04-07';
-document.getElementById('staffDate').value = '2025-04-07';
+document.getElementById('expenseDate').value = today();
+document.getElementById('perfDate').value = today();
+document.getElementById('staffDate').value = today();
 document.getElementById('reportMonth').value = t.slice(0,7);
 
-expenseCurrentDate = '2025-04-07';
-perfCurrentDate = '2025-04-07';
-staffCurrentDate = '2025-04-07';
+expenseCurrentDate = today();
+perfCurrentDate = today();
+staffCurrentDate = today();
 
 renderExpenses();
 renderPerf();
