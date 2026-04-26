@@ -788,6 +788,11 @@ async function syncFromSheets() {
     renderPerf();
     renderStaff();
     generateReport();
+    // 如果目前在報表 Tab 就刷新
+    if (document.getElementById('tab-report').classList.contains('active')) {
+      document.getElementById('reportMonth').value = (expenseCurrentDate||today()).slice(0,7);
+      generateReport();
+    }
   } catch(e) {
     showSyncStatus('✗ 同步失敗', 'var(--red)');
     console.error(e);
@@ -934,7 +939,11 @@ function switchTab(tab) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   event.target.closest('.tab').classList.add('active');
   document.getElementById('tab-'+tab).classList.add('active');
-  if (tab === 'report') { document.getElementById('reportMonth').value = (expenseCurrentDate||today()).slice(0,7); generateReport(); }
+  if (tab === 'report') {
+    document.getElementById('reportMonth').value = (expenseCurrentDate||today()).slice(0,7);
+    generateReport();
+    syncFromSheets();
+  }
 }
 
 let currentMode = 'view';
@@ -1235,6 +1244,8 @@ function submitStaff() {
 // REPORT
 // ══════════════════════════════
 function generateReport() {
+  const el = document.getElementById('reportContent');
+  if (!el) return;
   const month = document.getElementById('reportMonth').value || today().slice(0,7);
   const [yr, mo] = month.split('-').map(Number);
 
