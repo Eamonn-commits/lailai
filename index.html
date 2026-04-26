@@ -773,7 +773,10 @@ function showSyncStatus(msg, color='var(--orange)') {
   }
 }
 
+let syncLock = false;
+
 async function syncFromSheets() {
+  if (syncLock) return;
   showSyncStatus('⟳ 同步中...');
   try {
     const res = await fetch(API_URL + '?action=getAll');
@@ -800,15 +803,18 @@ async function syncFromSheets() {
 }
 
 async function pushToSheets(sheetName, rowData) {
+  syncLock = true;
   try {
     const url = API_URL + '?action=add&sheet=' + sheetName + '&data=' + encodeURIComponent(JSON.stringify(rowData));
     const res = await fetch(url);
     const result = await res.json();
     if (result.error) throw new Error(result.error);
     showSyncStatus('✓ 已儲存', 'var(--green)');
+    setTimeout(() => { syncLock = false; }, 3000);
     return true;
   } catch(e) {
     showSyncStatus('✗ 儲存失敗', 'var(--red)');
+    syncLock = false;
     console.error(e);
     return false;
   }
@@ -1573,7 +1579,7 @@ function removeStaffMember(idx) {
 // ══════════════════════════════
 updateHeaderDate();
 seedIfEmpty();
-syncFromSheets();
+setTimeout(syncFromSheets, 2000);
 setTimeout(wrapButtons, 500);
 
 // Set dates
