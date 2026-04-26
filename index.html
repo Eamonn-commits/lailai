@@ -985,13 +985,14 @@ function renderExpenses() {
     html += `<div class="card">
       <div class="card-header ${cat==='店面管銷成本'?'mgmt':cat==='食材原料'?'red':cat==='包裝耗材'?'gold':cat==='飲品原料'?'green':'orange'}">${cat==='食材原料'?'🥩':cat==='包裝耗材'?'📦':cat==='飲品原料'?'🧋':cat==='店面管銷成本'?'🏪':'📋'} ${cat}</div>
       <table class="expense-table">
-        <tr><th>品項</th><th>數量</th><th style="text-align:right">金額</th></tr>`;
+        <tr><th>品項</th><th>數量</th><th style="text-align:right">金額</th><th></th></tr>`;
     cats[cat].forEach(item => {
       total += Number(item.amount);
       html += `<tr>
         <td>${item.name}${item.warn ? `<span class="warn-badge">⛔️漲</span><span class="note">${item.warn}</span>` : ''}</td>
         <td style="color:var(--muted);font-size:12px">${item.qty||'-'}</td>
         <td class="amt">$${fmt(item.amount)}</td>
+        <td><button onclick="deleteExpense('${item.id}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;padding:0 4px" title="刪除">✕</button></td>
       </tr>`;
     });
     html += `</table></div>`;
@@ -1028,11 +1029,15 @@ function renderPerf() {
   } else {
     const totalExp = Number(rec.purchase) + Number(rec.other||0);
     const revenue = Number(rec.revenue);
+    const recId = rec.id;
     const profit = revenue - totalExp;
     const margin = revenue > 0 ? ((profit/revenue)*100).toFixed(1) : 0;
 
     html = `<div class="card">
-      <div class="card-header green">🏆 當日戰績</div>
+      <div class="card-header green" style="display:flex;justify-content:space-between;align-items:center">
+        <span>🏆 當日戰績</span>
+        <button onclick="deletePerf('${recId}')" style="background:rgba(255,255,255,.25);border:none;color:white;font-size:12px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:inherit">✕ 刪除</button>
+      </div>
       <div class="perf-grid">
         <div class="perf-cell">
           <div class="perf-label">🧅 蔥抓餅</div>
@@ -1102,7 +1107,7 @@ function renderStaff() {
     html = `<div class="card">
       <div class="card-header gold">👥 出勤記錄</div>
       <table class="staff-table">
-        <tr><th>姓名</th><th>時段</th><th>工時</th><th style="text-align:right">薪資</th></tr>`;
+        <tr><th>姓名</th><th>時段</th><th>工時</th><th style="text-align:right">薪資</th><th></th></tr>`;
     records.forEach(r => {
       const badgeMap = { work:'badge-work', leave:'badge-leave', sick:'badge-leave', absent:'badge-absent' };
       const hrs = calcHours(r.in, r.out);
@@ -1117,6 +1122,7 @@ function renderStaff() {
         <td style="font-size:12px;color:var(--muted)">${r.in&&r.out?r.in+'–'+r.out:r.note||'—'}</td>
         <td>${hrs>0?`<span class="hours-badge">${hrs.toFixed(1)}h</span>`:'-'}</td>
         <td style="text-align:right;font-weight:900;color:var(--red)">${wage>0?'$'+fmt(wage):'-'}</td>
+        <td><button onclick="deleteStaff('${r.id}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;padding:0 4px" title="刪除">✕</button></td>
       </tr>`;
     });
     html += `</table></div>`;
@@ -1414,6 +1420,37 @@ function runSearch() {
   });
   html += '</table></div>';
   container.innerHTML = html;
+}
+
+
+// ══════════════════════════════
+// DELETE
+// ══════════════════════════════
+async function deleteExpense(id) {
+  if (!confirm('確定刪除這筆支出？')) return;
+  DB.expenses = DB.expenses.filter(e => String(e.id) !== String(id));
+  localStorage.setItem('lailaiDB', JSON.stringify(DB));
+  renderExpenses();
+  generateReport();
+  await deleteFromSheets('expenses', id);
+}
+
+async function deletePerf(id) {
+  if (!confirm('確定刪除這天的戰績？')) return;
+  DB.performances = DB.performances.filter(p => String(p.id) !== String(id));
+  localStorage.setItem('lailaiDB', JSON.stringify(DB));
+  renderPerf();
+  generateReport();
+  await deleteFromSheets('performances', id);
+}
+
+async function deleteStaff(id) {
+  if (!confirm('確定刪除這筆出勤記錄？')) return;
+  DB.staff = DB.staff.filter(s => String(s.id) !== String(id));
+  localStorage.setItem('lailaiDB', JSON.stringify(DB));
+  renderStaff();
+  generateReport();
+  await deleteFromSheets('staff', id);
 }
 
 // ══════════════════════════════
