@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>萊萊蔥抓餅｜營運管理系統</title>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, where, orderBy, onSnapshot, setDoc, getDoc }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAU6JGR2F3SP5TNRU1wKJRNpErYwL-emJo",
+    authDomain: "lailai-manager.firebaseapp.com",
+    projectId: "lailai-manager",
+    storageBucket: "lailai-manager.firebasestorage.app",
+    messagingSenderId: "400764876175",
+    appId: "1:400764876175:web:3c4f0534d3e80dfb90c7fa"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const db   = getFirestore(app);
+  const auth = getAuth(app);
+
+  window._db   = db;
+  window._auth = auth;
+  window._fs   = { collection, addDoc, getDocs, deleteDoc, doc, query, where, orderBy, onSnapshot, setDoc, getDoc };
+
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      document.getElementById('login-screen').style.display  = 'none';
+      document.getElementById('setup-screen').style.display  = 'none';
+      document.getElementById('main-header').style.display   = 'flex';
+      document.getElementById('main-tabs').style.display     = 'flex';
+      document.getElementById('user-email').textContent      = user.email;
+      const brand = localStorage.getItem('lailai_brand') || '萊萊蔥抓餅';
+      if (typeof initApp === 'function') initApp(brand);
+      window._fbReady = true;
+      document.dispatchEvent(new Event('firebase-ready'));
+    } else {
+      document.getElementById('login-screen').style.display  = 'flex';
+      document.getElementById('main-header').style.display   = 'none';
+      document.getElementById('main-tabs').style.display     = 'none';
+    }
+  });
+
+  window.doLogin = async function() {
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl    = document.getElementById('login-error');
+    errEl.textContent = '';
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch(e) {
+      errEl.textContent = '❌ 帳號或密碼錯誤，請再試一次';
+    }
+  };
+
+  window.doLogout = async function() {
+    if (!confirm('確定登出？')) return;
+    await signOut(auth);
+  };
+</script>
+
+<style>
+* { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; margin: 0; padding: 0; }
+button, .tab, .staff-chip, .mode-btn, .btn-load, .btn-submit, .add-btn { cursor: pointer; user-select: none; }
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+
+:root {
+  --red: #E8680A;
+  --red-light: #fff4ec;
+  --orange: #FF9A3C;
+  --gold: #D4780A;
+  --ink: #1a1a1a;
+  --muted: #6b6b6b;
+  --border: #eeddc8;
+  --bg: #fffaf5;
+  --white: #ffffff;
+  --green: #2d7d46;
+  --green-light: #edfaf2;
+  --warn: #c0460a;
+  --warn-light: #fff0e8;
+  --blue: #1a6fb5;
+  --blue-light: #edf4ff;
+}
+
+body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; }
+
+/* SETUP */
+#setup-screen {
+  position: fixed; inset: 0; background: var(--red); display: flex;
+  align-items: center; justify-content: center; z-index: 9999; padding: 24px;
+}
+.setup-box {
+  background: white; border-radius: 20px; padding: 32px 28px;
+  max-width: 400px; width: 100%; text-align: center;
+}
+.setup-box h2 { font-size: 22px; font-weight: 900; color: var(--red); margin-bottom: 8px; }
+.setup-box p { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+.setup-box input { width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; outline: none; text-align: center; font-weight: 700; margin-bottom: 12px; }
+.setup-box input:focus { border-color: var(--red); }
+.setup-box button { width: 100%; padding: 14px; background: var(--red); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 900; font-family: inherit; cursor: pointer; }
+
+/* HEADER */
+.header {
+  background: var(--red); color: white; padding: 16px 20px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(232,104,10,.35);
+}
+.header-title { font-size: 18px; font-weight: 900; letter-spacing: .5px; }
+.header-sub { font-size: 11px; opacity: .8; margin-top: 2px; }
+.header-right { text-align: right; }
+.header-date { font-size: 13px; font-weight: 700; }
+#sync-status { font-size: 11px; margin-top: 2px; opacity: 0; transition: opacity .5s; }
+.sync-btn { background: rgba(255,255,255,.2); border: none; color: white; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-family: inherit; margin-top: 3px; }
+
+/* TABS */
+.tabs {
+  display: flex; background: white;
+  border-bottom: 2px solid var(--border);
+  position: sticky; top: 64px; z-index: 99;
+  overflow-x: auto;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex-shrink: 0; padding: 12px 10px; text-align: center;
+  font-size: 12px; font-weight: 700; color: var(--muted);
+  cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s;
+  white-space: nowrap;
+}
+.tab.active { color: var(--red); border-bottom-color: var(--red); }
+
+/* SECTIONS */
+.section { display: none; padding: 16px; }
+.section.active { display: block; }
+
+/* CARD */
+.card { background: white; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 14px; overflow: hidden; }
+.card-header {
+  padding: 12px 16px; font-size: 13px; font-weight: 900; letter-spacing: .5px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.card-header.red { background: var(--red); color: white; }
+.card-header.green { background: var(--green); color: white; }
+.card-header.gold { background: var(--gold); color: white; }
+.card-header.orange { background: var(--orange); color: white; }
+.card-header.mgmt { background: #5a6a7a; color: white; }
+.card-header.blue { background: var(--blue); color: white; }
+.card-header.dark { background: var(--ink); color: white; }
+
+/* DATE BAR */
+.date-bar {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  background: white; padding: 12px 16px; border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.date-bar label { font-size: 12px; color: var(--muted); font-weight: 700; white-space: nowrap; }
+.date-bar input { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 14px; font-family: inherit; outline: none; }
+.btn-load { background: var(--red); color: white; border: none; border-radius: 7px; padding: 7px 14px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap; }
+
+/* EXPENSE TABLE */
+.expense-table { width: 100%; border-collapse: collapse; }
+.expense-table th { background: #f5f0ea; font-size: 11px; font-weight: 700; color: var(--muted); padding: 8px 10px; text-align: left; }
+.expense-table td { padding: 9px 10px; font-size: 13px; border-bottom: 1px solid #f0ebe4; vertical-align: middle; }
+.expense-table tr:last-child td { border-bottom: none; }
+.expense-table .amt { font-weight: 700; text-align: right; font-size: 14px; }
+.warn-badge { display: inline-block; background: var(--warn-light); color: var(--warn); font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 4px; margin-left: 4px; }
+.expense-table .note { font-size: 11px; color: var(--warn); display: block; margin-top: 2px; }
+.total-row td { background: var(--red-light); font-weight: 900; font-size: 15px; color: var(--red); border-top: 2px solid var(--red) !important; }
+
+/* PERFORMANCE */
+.perf-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.perf-cell { padding: 14px 16px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.perf-cell:nth-child(2n) { border-right: none; }
+.perf-cell:nth-last-child(-n+2) { border-bottom: none; }
+.perf-label { font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+.perf-value { font-size: 22px; font-weight: 900; }
+.perf-value.green { color: var(--green); }
+.perf-value.red { color: var(--red); }
+.perf-unit { font-size: 12px; color: var(--muted); margin-left: 2px; }
+
+/* STAFF TABLE */
+.staff-table { width: 100%; border-collapse: collapse; }
+.staff-table th { background: #f5f0ea; font-size: 11px; font-weight: 700; color: var(--muted); padding: 8px 10px; text-align: left; }
+.staff-table td { padding: 9px 10px; font-size: 13px; border-bottom: 1px solid #f0ebe4; }
+.staff-table tr:last-child td { border-bottom: none; }
+.badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; }
+.badge-work { background: var(--green-light); color: var(--green); }
+.badge-leave { background: #ffeaea; color: var(--red); }
+.badge-absent { background: #f5f5f5; color: #999; }
+.hours-badge { font-size: 12px; font-weight: 700; color: var(--orange); background: #fff7ec; padding: 2px 7px; border-radius: 20px; }
+
+/* ADD / FORM */
+.add-btn { width: 100%; padding: 12px; background: white; border: 2px dashed var(--border); border-radius: 10px; font-family: inherit; font-size: 14px; color: var(--muted); cursor: pointer; margin-bottom: 14px; font-weight: 700; transition: all .2s; }
+.add-btn:hover { border-color: var(--red); color: var(--red); background: var(--red-light); }
+
+/* MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; padding: 20px; align-items: flex-end; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 16px 16px 0 0; padding: 20px; width: 100%; max-height: 90vh; overflow-y: auto; position: fixed; bottom: 0; left: 0; right: 0; animation: slideUp .25s ease; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-title { font-size: 16px; font-weight: 900; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.modal-close { font-size: 20px; cursor: pointer; color: var(--muted); }
+
+.form-group { margin-bottom: 14px; }
+.form-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; display: block; }
+.form-input, .form-select { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; outline: none; transition: border-color .2s; }
+.form-input:focus, .form-select:focus { border-color: var(--red); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn-submit { width: 100%; padding: 14px; background: var(--red); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 900; font-family: inherit; cursor: pointer; margin-top: 4px; }
+
+/* REPORT */
+.report-card { background: white; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 14px; overflow: hidden; }
+.report-header { padding: 12px 16px; font-size: 13px; font-weight: 900; background: var(--ink); color: white; display: flex; justify-content: space-between; align-items: center; }
+.report-row { display: flex; justify-content: space-between; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #f0ebe4; align-items: center; }
+.report-row:last-child { border-bottom: none; }
+.report-key { color: var(--muted); }
+.report-val { font-weight: 700; }
+.profit-positive { color: var(--green); font-size: 18px; font-weight: 900; }
+.profit-negative { color: var(--red); font-size: 18px; font-weight: 900; }
+
+/* BAR CHART */
+.bar-wrap { padding: 14px 16px; }
+.bar-row { margin-bottom: 10px; }
+.bar-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between; }
+.bar-track { background: #f0ebe4; border-radius: 4px; height: 10px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; background: var(--red); transition: width .6s ease; }
+.bar-fill.green { background: var(--green); }
+.bar-fill.blue { background: var(--blue); }
+
+/* ALERT BOXES */
+.alert-box { padding: 12px 16px; border-radius: 10px; margin-bottom: 10px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+.alert-good { background: var(--green-light); border: 1px solid #b0e8c4; }
+.alert-ok { background: #fffbea; border: 1px solid #ffe58a; }
+.alert-bad { background: var(--warn-light); border: 1px solid #ffbda0; }
+
+/* MODE BAR */
+.mode-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+.mode-btn { flex: 1; padding: 9px 4px; border: 1.5px solid var(--border); border-radius: 8px; background: white; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--muted); transition: all .2s; }
+.mode-btn.active { border-color: var(--red); background: var(--red-light); color: var(--red); }
+
+/* STAFF CHIPS */
+.staff-chip { padding: 8px 14px; border-radius: 20px; border: 2px solid var(--border); background: white; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; color: var(--ink); transition: all .15s; }
+.staff-chip.selected { background: var(--red); border-color: var(--red); color: white; }
+.staff-list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 700; }
+.btn-remove-staff { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; }
+
+/* EMPTY */
+.empty { text-align: center; padding: 30px 20px; color: var(--muted); }
+.empty-icon { font-size: 36px; margin-bottom: 8px; }
+.empty-text { font-size: 13px; }
+
+/* ANNUAL */
+.month-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #f0ebe4; font-size: 13px; }
+.month-row:last-child { border-bottom: none; }
+.growth-up { color: var(--green); font-size: 11px; font-weight: 700; }
+.growth-down { color: var(--red); font-size: 11px; font-weight: 700; }
+
+/* STATS GRID */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.stat-cell { padding: 14px 16px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.stat-cell:nth-child(2n) { border-right: none; }
+.stat-cell:nth-last-child(-n+2) { border-bottom: none; }
+.stat-label { font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+.stat-value { font-size: 18px; font-weight: 900; }
+
+/* PENDING DOT */
+.pending-dot { display: inline-block; width: 8px; height: 8px; background: var(--warn); border-radius: 50%; margin-left: 4px; vertical-align: middle; }
+
+/* LOADING */
+#loading-overlay { position: fixed; inset: 0; background: rgba(255,250,245,.9); z-index: 500; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.divider-label { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .5px; padding: 8px 16px 4px; background: #f9f6f1; border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<!-- SETUP (hidden) -->
+<div id="setup-screen" style="display:none">
+
+<!-- LOADING -->
+<div id="loading-overlay" style="display:none">
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:var(--muted)">載入中...</div>
+</div>
+
+<!-- HEADER -->
+<div class="header" id="main-header" style="display:none">
+  <div>
+    <div class="header-title" id="header-brand">🥟 萊萊蔥抓餅</div>
+    <div class="header-sub">每日營運記錄系統</div>
+  </div>
+  <div class="header-right">
+    <div class="header-date" id="headerDate"></div>
+    <span id="user-email" style="font-size:10px;opacity:.7;display:block"></span>
+    <div id="sync-status"></div>
+    <div style="display:flex;gap:4px;margin-top:2px">
+      <button class="sync-btn" onclick="syncAll()">⟳ 同步</button>
+      <button class="sync-btn" onclick="doLogout()" style="background:rgba(255,255,255,.12)">登出</button>
+    </div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs" id="main-tabs" style="display:none">
+  <div class="tab active" onclick="switchTab('expense',this)">💰 支出</div>
+  <div class="tab" onclick="switchTab('performance',this)">📊 戰績</div>
+  <div class="tab" onclick="switchTab('staff',this)">👥 人員</div>
+  <div class="tab" onclick="switchTab('report',this)">📋 報表</div>
+  <div class="tab" onclick="switchTab('annual',this)">📈 年度</div>
+  <div class="tab" onclick="switchTab('search',this)">🔍 搜尋</div>
+</div>
+
+<!-- ═══════════ 支出 TAB ═══════════ -->
+<div class="section active" id="tab-expense">
+  <div class="date-bar">
+    <label>日期</label>
+    <input type="date" id="expenseDate">
+    <button class="btn-load" onclick="loadDay()">載入</button>
+  </div>
+  <div class="mode-bar">
+    <button class="mode-btn active" id="mode-view" onclick="setMode('view')">📋 查看</button>
+    <button class="mode-btn" id="mode-add" onclick="setMode('add')">➕ 新增</button>
+  </div>
+  <div id="expenseList"></div>
+  <div id="addExpenseArea" style="display:none">
+    <button class="add-btn" onclick="openModal('expense')">＋ 新增支出項目</button>
+  </div>
+</div>
+
+<!-- ═══════════ 戰績 TAB ═══════════ -->
+<div class="section" id="tab-performance">
+  <div class="date-bar">
+    <label>日期</label>
+    <input type="date" id="perfDate">
+    <button class="btn-load" onclick="loadPerfDay()">載入</button>
+  </div>
+  <div class="mode-bar">
+    <button class="mode-btn active" id="perfmode-view" onclick="setPerfMode('view')">📋 查看</button>
+    <button class="mode-btn" id="perfmode-add" onclick="setPerfMode('add')">➕ 新增</button>
+  </div>
+  <div id="perfDisplay"></div>
+  <div id="addPerfArea" style="display:none">
+    <button class="add-btn" onclick="openModal('perf')">＋ 填寫當日戰績</button>
+  </div>
+</div>
+
+<!-- ═══════════ 人員 TAB ═══════════ -->
+<div class="section" id="tab-staff">
+  <div class="date-bar">
+    <label>日期</label>
+    <input type="date" id="staffDate">
+    <button class="btn-load" onclick="loadStaffDay()">載入</button>
+  </div>
+  <div class="mode-bar">
+    <button class="mode-btn active" id="staffmode-view" onclick="setStaffMode('view')">📋 查看</button>
+    <button class="mode-btn" id="staffmode-add" onclick="setStaffMode('add')">➕ 新增</button>
+  </div>
+  <div id="staffDisplay"></div>
+  <div id="addStaffArea" style="display:none">
+    <button class="add-btn" onclick="openModal('staff')">＋ 新增出勤記錄</button>
+  </div>
+</div>
+
+<!-- ═══════════ 月報表 TAB ═══════════ -->
+<div class="section" id="tab-report">
+  <div class="date-bar">
+    <label>月份</label>
+    <input type="month" id="reportMonth">
+    <button class="btn-load" onclick="generateReport()">產生</button>
+  </div>
+  <div id="reportContent"></div>
+</div>
+
+<!-- ═══════════ 年度報告 TAB ═══════════ -->
+<div class="section" id="tab-annual">
+  <div class="date-bar" style="gap:8px">
+    <label>年份</label>
+    <select id="annual-year" class="form-select" style="flex:1;padding:6px 10px;font-size:14px">
+    </select>
+    <button class="btn-load" onclick="renderAnnual()">產生</button>
+  </div>
+
+  <!-- 內部分頁 -->
+  <div class="mode-bar" style="grid-template-columns:1fr 1fr 1fr;display:grid">
+    <button class="mode-btn active" id="an-tab-overview" onclick="switchAnnualTab('overview',this)">月度總覽</button>
+    <button class="mode-btn" id="an-tab-compare" onclick="switchAnnualTab('compare',this)">月份比較</button>
+    <button class="mode-btn" id="an-tab-yearly" onclick="switchAnnualTab('yearly',this)">年度對比</button>
+  </div>
+
+  <div id="annual-overview"></div>
+  <div id="annual-compare" style="display:none">
+    <div class="card">
+      <div class="card-header blue">🔀 選擇兩個月份比較</div>
+      <div style="padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div class="form-label">月份 A</div>
+          <input type="month" class="form-input" id="cmp-a">
+        </div>
+        <div>
+          <div class="form-label">月份 B</div>
+          <input type="month" class="form-input" id="cmp-b">
+        </div>
+      </div>
+      <div style="padding:0 16px 16px">
+        <button class="btn-submit" onclick="renderCompare()">比較</button>
+      </div>
+    </div>
+    <div id="compare-result"></div>
+  </div>
+  <div id="annual-yearly" style="display:none"></div>
+</div>
+
+<!-- ═══════════ 搜尋 TAB ═══════════ -->
+<div class="section" id="tab-search">
+  <div class="card" style="margin-bottom:14px">
+    <div style="padding:14px 16px">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input type="text" class="form-input" id="search-keyword" placeholder="輸入品項名稱，例：雞蛋" style="flex:1" oninput="runSearch()">
+        <button class="btn-load" onclick="runSearch()">搜尋</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select class="form-select" id="search-cat" onchange="runSearch()" style="flex:1;min-width:120px">
+          <option value="">全部類別</option>
+          <option>食材原料</option><option>包裝耗材</option>
+          <option>飲品原料</option><option>店面管銷成本</option><option>其他</option>
+        </select>
+        <input type="date" class="form-input" id="search-date-from" onchange="runSearch()" style="flex:1">
+        <input type="date" class="form-input" id="search-date-to" onchange="runSearch()" style="flex:1">
+      </div>
+    </div>
+  </div>
+  <div id="search-summary"></div>
+  <div id="search-results"></div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODALS
+════════════════════════════════════════ -->
+<!-- Expense Modal -->
+<div class="modal-overlay" id="modal-expense">
+  <div class="modal">
+    <div class="modal-title">新增支出 <span class="modal-close" onclick="closeModal('expense')">✕</span></div>
+    <div class="form-group"><label class="form-label">日期</label><input type="date" class="form-input" id="exp-date"></div>
+    <div class="form-group">
+      <label class="form-label">類別</label>
+      <select class="form-select" id="exp-cat">
+        <option>食材原料</option><option>包裝耗材</option><option>飲品原料</option><option>店面管銷成本</option><option>其他</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">品項名稱</label><input type="text" class="form-input" id="exp-name" placeholder="例：雞蛋"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">金額（元）</label><input type="number" class="form-input" id="exp-amount" placeholder="0"></div>
+      <div class="form-group"><label class="form-label">數量/備註</label><input type="text" class="form-input" id="exp-qty" placeholder="例：2箱"></div>
+    </div>
+    <div class="form-group"><label class="form-label">⛔️ 漲價備註（選填）</label><input type="text" class="form-input" id="exp-warn" placeholder="例：漲60元/箱"></div>
+    <div class="form-group"><label class="form-label">提交人</label><input type="text" class="form-input" id="exp-who" placeholder="你的名字"></div>
+    <button class="btn-submit" onclick="submitExpense()">＋ 新增支出</button>
+  </div>
+</div>
+
+<!-- Perf Modal -->
+<div class="modal-overlay" id="modal-perf">
+  <div class="modal">
+    <div class="modal-title">填寫戰績 <span class="modal-close" onclick="closeModal('perf')">✕</span></div>
+    <div class="form-group"><label class="form-label">日期</label><input type="date" class="form-input" id="perf-date"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">蔥抓餅（顆）</label><input type="number" class="form-input" id="perf-scallion" placeholder="0"></div>
+      <div class="form-group"><label class="form-label">小籠包（籠）</label><input type="number" class="form-input" id="perf-dumpling" placeholder="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">進貨支出（元）</label><input type="number" class="form-input" id="perf-purchase" placeholder="0"></div>
+      <div class="form-group"><label class="form-label">其他支出（元）</label><input type="number" class="form-input" id="perf-other" placeholder="0"></div>
+    </div>
+    <div class="form-group"><label class="form-label">營業額（元）</label><input type="number" class="form-input" id="perf-revenue" placeholder="0"></div>
+    <div class="form-group"><label class="form-label">備註</label><input type="text" class="form-input" id="perf-note" placeholder="特殊情況..."></div>
+    <div class="form-group"><label class="form-label">提交人</label><input type="text" class="form-input" id="perf-who" placeholder="你的名字"></div>
+    <button class="btn-submit" onclick="submitPerf()">＋ 儲存戰績</button>
+  </div>
+</div>
+
+<!-- Staff Modal -->
+<div class="modal-overlay" id="modal-staff">
+  <div class="modal">
+    <div class="modal-title">新增出勤 <span class="modal-close" onclick="closeModal('staff')">✕</span></div>
+    <div class="form-group"><label class="form-label">日期</label><input type="date" class="form-input" id="staff-date"></div>
+    <div class="form-group">
+      <label class="form-label" style="display:flex;justify-content:space-between">
+        姓名 <span onclick="openManageStaff()" style="color:var(--red);font-size:11px;cursor:pointer">⚙️ 管理名單</span>
+      </label>
+      <div id="staff-picker" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px"></div>
+      <input type="hidden" id="staff-name">
+      <div id="staff-selected-display" style="font-size:12px;color:var(--muted)"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">狀態</label>
+      <select class="form-select" id="staff-status">
+        <option value="work">出勤</option><option value="leave">事假</option>
+        <option value="sick">病假</option><option value="absent">未到</option>
+      </select>
+    </div>
+    <div class="form-row" id="staff-time-fields">
+      <div class="form-group"><label class="form-label">上班時間</label><input type="time" class="form-input" id="staff-in"></div>
+      <div class="form-group"><label class="form-label">下班時間</label><input type="time" class="form-input" id="staff-out"></div>
+    </div>
+    <div class="form-group"><label class="form-label">備註</label><input type="text" class="form-input" id="staff-note" placeholder="選填"></div>
+    <div class="form-group"><label class="form-label">提交人</label><input type="text" class="form-input" id="staff-who" placeholder="你的名字"></div>
+    <button class="btn-submit" onclick="submitStaff()">＋ 新增出勤</button>
+  </div>
+</div>
+
+<!-- Manage Staff Modal -->
+<div class="modal-overlay" id="modal-manage-staff">
+  <div class="modal">
+    <div class="modal-title">員工名單管理 <span class="modal-close" onclick="closeModal('manage-staff')">✕</span></div>
+    <div id="staff-list-edit" style="margin-bottom:14px"></div>
+    <div style="display:flex;gap:8px">
+      <input type="text" class="form-input" id="new-staff-input" placeholder="新員工姓名" style="flex:1">
+      <button class="btn-submit" style="width:auto;padding:10px 16px;margin-top:0" onclick="addStaffMember()">新增</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════
+// CONSTANTS
+// ══════════════════════════════
+const HOURLY_RATE = 200;
+const DEFAULT_STAFF = ['蔡老闆','馮老闆','賢','文玲','淑儀','聖韻','睿恩','偉翰','小玉'];
+
+// ══════════════════════════════
+// LOCAL DB (cache)
+// ══════════════════════════════
+let DB = { expenses: [], performances: [], staff: [] };
+
+function loadLocalDB() {
+  const raw = localStorage.getItem('lailaiDB_v2');
+  if (raw) DB = JSON.parse(raw);
+}
+
+function saveLocalDB() {
+  localStorage.setItem('lailaiDB_v2', JSON.stringify(DB));
+}
+
+// ══════════════════════════════
+// SETUP
+// ══════════════════════════════
+function startApp() {
+  const brand = document.getElementById('setup-brand').value.trim() || '萊萊蔥抓餅';
+  localStorage.setItem('lailai_brand', brand);
+  document.getElementById('setup-screen').style.display = 'none';
+  initApp(brand);
+}
+
+function initApp(brand) {
+  document.getElementById('header-brand').textContent = '🥟 ' + brand;
+  document.getElementById('main-header').style.display = 'flex';
+  document.getElementById('main-tabs').style.display = 'flex';
+  updateHeaderDate();
+  loadLocalDB();
+  const t = today();
+  document.getElementById('expenseDate').value = t;
+  document.getElementById('perfDate').value = t;
+  document.getElementById('staffDate').value = t;
+  document.getElementById('reportMonth').value = t.slice(0,7);
+  expenseCurrentDate = t;
+  perfCurrentDate = t;
+  staffCurrentDate = t;
+
+  // populate year selects
+  const cy = new Date().getFullYear();
+  const ySel = document.getElementById('annual-year');
+  for (let y = cy; y >= cy - 5; y--) {
+    ySel.innerHTML += `<option value="${y}">${y}年</option>`;
+  }
+  const cmpA = document.getElementById('cmp-a');
+  const cmpB = document.getElementById('cmp-b');
+  const pm = t.slice(0,7);
+  cmpB.value = pm;
+  const prevM = new Date(cy, new Date().getMonth() - 1, 1);
+  cmpA.value = prevM.toISOString().slice(0,7);
+
+  renderExpenses();
+  renderPerf();
+  renderStaff();
+
+  // sync from Firebase if ready
+  if (window._fbReady) syncAll();
+  else document.addEventListener('firebase-ready', syncAll);
+}
+
+// ══════════════════════════════
+// FIREBASE SYNC
+// ══════════════════════════════
+async function syncAll() {
+  if (!window._db) { showSyncStatus('⚠ 未設定Firebase', 'var(--orange)'); return; }
+  showSyncStatus('⟳ 同步中...', 'var(--orange)');
+  try {
+    const { collection, getDocs } = window._fs;
+    const db = window._db;
+    const [expSnap, perfSnap, staffSnap] = await Promise.all([
+      getDocs(collection(db, 'expenses')),
+      getDocs(collection(db, 'performances')),
+      getDocs(collection(db, 'staff')),
+    ]);
+    DB.expenses = expSnap.docs.map(d => ({ ...d.data(), _fid: d.id }));
+    DB.performances = perfSnap.docs.map(d => ({ ...d.data(), _fid: d.id }));
+    DB.staff = staffSnap.docs.map(d => ({ ...d.data(), _fid: d.id }));
+    saveLocalDB();
+    showSyncStatus('✓ 已同步', 'var(--green)');
+    renderExpenses(); renderPerf(); renderStaff(); generateReport();
+  } catch(e) {
+    showSyncStatus('✗ 同步失敗', 'var(--red)');
+    console.error(e);
+  }
+}
+
+async function pushRecord(collName, data) {
+  if (!window._db) {
+    saveLocalDB();
+    showSyncStatus('本機儲存', 'var(--orange)');
+    return null;
+  }
+  try {
+    const { collection, addDoc } = window._fs;
+    const ref = await addDoc(collection(window._db, collName), data);
+    showSyncStatus('✓ 已儲存', 'var(--green)');
+    return ref.id;
+  } catch(e) {
+    showSyncStatus('✗ 儲存失敗', 'var(--red)');
+    console.error(e);
+    return null;
+  }
+}
+
+async function deleteRecord(collName, localId, fid) {
+  DB[collName] = DB[collName].filter(r => String(r.id) !== String(localId));
+  saveLocalDB();
+  if (window._db && fid) {
+    try {
+      const { doc, deleteDoc } = window._fs;
+      await deleteDoc(doc(window._db, collName, fid));
+    } catch(e) { console.error(e); }
+  }
+}
+
+// ══════════════════════════════
+// UTILITIES
+// ══════════════════════════════
+function today() { return new Date().toISOString().slice(0,10); }
+function fmt(n) { return Number(n).toLocaleString(); }
+function calcHours(inT, outT) {
+  if (!inT || !outT) return 0;
+  const [ih,im] = inT.split(':').map(Number);
+  const [oh,om] = outT.split(':').map(Number);
+  let diff = (oh*60+om) - (ih*60+im);
+  if (diff < 0) diff += 1440;
+  return diff / 60;
+}
+function updateHeaderDate() {
+  const d = new Date();
+  document.getElementById('headerDate').textContent =
+    `${d.getMonth()+1}/${d.getDate()} (${['日','一','二','三','四','五','六'][d.getDay()]})`;
+}
+function showSyncStatus(msg, color='var(--orange)') {
+  const el = document.getElementById('sync-status');
+  el.textContent = msg; el.style.color = color; el.style.opacity = '1';
+  if (color !== 'var(--orange)') setTimeout(() => { el.style.opacity='0'; }, 2500);
+}
+
+// ══════════════════════════════
+// TAB SWITCHING
+// ══════════════════════════════
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+  if (tab === 'report') { generateReport(); }
+  if (tab === 'annual') { renderAnnual(); }
+}
+
+let currentMode = 'view';
+function setMode(m) {
+  currentMode = m;
+  document.getElementById('mode-view').classList.toggle('active', m==='view');
+  document.getElementById('mode-add').classList.toggle('active', m==='add');
+  document.getElementById('addExpenseArea').style.display = m==='add' ? 'block' : 'none';
+  renderExpenses();
+}
+
+let perfMode = 'view';
+function setPerfMode(m) {
+  perfMode = m;
+  document.getElementById('perfmode-view').classList.toggle('active', m==='view');
+  document.getElementById('perfmode-add').classList.toggle('active', m==='add');
+  document.getElementById('addPerfArea').style.display = m==='add' ? 'block' : 'none';
+  renderPerf();
+}
+
+let staffMode = 'view';
+function setStaffMode(m) {
+  staffMode = m;
+  document.getElementById('staffmode-view').classList.toggle('active', m==='view');
+  document.getElementById('staffmode-add').classList.toggle('active', m==='add');
+  document.getElementById('addStaffArea').style.display = m==='add' ? 'block' : 'none';
+  renderStaff();
+}
+
+// ══════════════════════════════
+// EXPENSE
+// ══════════════════════════════
+let expenseCurrentDate = today();
+function loadDay() {
+  expenseCurrentDate = document.getElementById('expenseDate').value || today();
+  renderExpenses();
+}
+
+function renderExpenses() {
+  const date = expenseCurrentDate;
+  const items = DB.expenses.filter(e => e.date === date && (e.status === 'approved' || !e.status));
+  const cats = {};
+  items.forEach(item => { if (!cats[item.cat]) cats[item.cat]=[]; cats[item.cat].push(item); });
+
+  let html = '';
+  let total = 0;
+  if (items.length === 0) html = `<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">這天還沒有支出記錄</div></div>`;
+
+  const catColors = { '食材原料':'red','包裝耗材':'gold','飲品原料':'green','店面管銷成本':'mgmt','其他':'orange' };
+  const catIcons = { '食材原料':'🥩','包裝耗材':'📦','飲品原料':'🧋','店面管銷成本':'🏪','其他':'📋' };
+
+  Object.keys(cats).forEach(cat => {
+    html += `<div class="card"><div class="card-header ${catColors[cat]||'orange'}">${catIcons[cat]||'📋'} ${cat}</div>
+      <table class="expense-table"><tr><th>品項</th><th>數量</th><th style="text-align:right">金額</th><th></th></tr>`;
+    cats[cat].forEach(item => {
+      total += Number(item.amount);
+      html += `<tr>
+        <td>${item.name}${item.warn?`<span class="warn-badge">⛔️漲</span><span class="note">${item.warn}</span>`:''}</td>
+        <td style="color:var(--muted);font-size:12px">${item.qty||'-'}</td>
+        <td class="amt">$${fmt(item.amount)}</td>
+        <td><button onclick="doDeleteExpense('${item.id}','${item._fid||''}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;padding:0 4px">✕</button></td>
+      </tr>`;
+    });
+    html += `</table></div>`;
+  });
+
+  if (items.length > 0) html += `<div class="card"><table class="expense-table"><tr class="total-row"><td colspan="2">💰 當日支出總計</td><td class="amt">$${fmt(total)}</td></tr></table></div>`;
+  document.getElementById('expenseList').innerHTML = html;
+}
+
+async function submitExpense() {
+  const data = {
+    date: document.getElementById('exp-date').value || today(),
+    cat: document.getElementById('exp-cat').value,
+    name: document.getElementById('exp-name').value,
+    amount: document.getElementById('exp-amount').value,
+    qty: document.getElementById('exp-qty').value,
+    warn: document.getElementById('exp-warn').value,
+    who: document.getElementById('exp-who').value,
+    status: 'approved', id: Date.now()
+  };
+  if (!data.name || !data.amount) { alert('請填寫品項和金額'); return; }
+  const fid = await pushRecord('expenses', data);
+  DB.expenses.push({ ...data, _fid: fid });
+  saveLocalDB();
+  expenseCurrentDate = data.date;
+  document.getElementById('expenseDate').value = data.date;
+  renderExpenses();
+  closeModal('expense');
+  ['exp-name','exp-amount','exp-qty','exp-warn','exp-who'].forEach(id => document.getElementById(id).value='');
+}
+
+async function doDeleteExpense(id, fid) {
+  if (!confirm('確定刪除？')) return;
+  await deleteRecord('expenses', id, fid);
+  renderExpenses(); generateReport();
+}
+
+// ══════════════════════════════
+// PERFORMANCE
+// ══════════════════════════════
+let perfCurrentDate = today();
+function loadPerfDay() {
+  perfCurrentDate = document.getElementById('perfDate').value || today();
+  renderPerf();
+}
+
+function renderPerf() {
+  const date = perfCurrentDate;
+  const rec = DB.performances.find(p => p.date===date && (p.status==='approved'||!p.status));
+  let html = '';
+  if (!rec) {
+    html = `<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">這天還沒有戰績資料</div></div>`;
+  } else {
+    const totalExp = Number(rec.purchase)+Number(rec.other||0);
+    const revenue = Number(rec.revenue);
+    const profit = revenue - totalExp;
+    const margin = revenue > 0 ? ((profit/revenue)*100).toFixed(1) : 0;
+    const expRatio = revenue > 0 ? (totalExp/revenue*100).toFixed(1) : 0;
+
+    html = `<div class="card">
+      <div class="card-header green" style="display:flex;justify-content:space-between">
+        <span>🏆 當日戰績</span>
+        <button onclick="doDeletePerf('${rec.id}','${rec._fid||''}')" style="background:rgba(255,255,255,.25);border:none;color:white;font-size:12px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:inherit">✕ 刪除</button>
+      </div>
+      <div class="perf-grid">
+        <div class="perf-cell"><div class="perf-label">🧅 蔥抓餅</div><div class="perf-value">${fmt(rec.scallion)}<span class="perf-unit">顆</span></div></div>
+        <div class="perf-cell"><div class="perf-label">🥟 小籠包</div><div class="perf-value">${fmt(rec.dumpling)}<span class="perf-unit">籠</span></div></div>
+        <div class="perf-cell"><div class="perf-label">💸 總支出</div><div class="perf-value red">$${fmt(totalExp)}</div></div>
+        <div class="perf-cell"><div class="perf-label">💰 營業額</div><div class="perf-value green">$${fmt(revenue)}</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header gold">📈 損益概況</div>
+      <div style="padding:16px;text-align:center;margin-bottom:8px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">預估毛利</div>
+        <div class="${profit>=0?'profit-positive':'profit-negative'}">${profit>=0?'+':''}$${fmt(profit)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">毛利率 ${margin}%</div>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-row">
+          <div class="bar-label"><span>進貨支出佔比</span><span>${expRatio}%</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.min(expRatio,100)}%;background:${expRatio>50?'var(--warn)':expRatio>35?'var(--orange)':'var(--green)'}"></div></div>
+        </div>
+      </div>
+      ${Number(expRatio) > 50 ? `<div style="padding:0 16px 14px"><div class="alert-box alert-bad">⚠️ 進貨佔比過高（${expRatio}%），建議控制在 40% 以內</div></div>` :
+        Number(expRatio) > 35 ? `<div style="padding:0 16px 14px"><div class="alert-box alert-ok">📌 進貨佔比尚可（${expRatio}%），仍有優化空間</div></div>` :
+        `<div style="padding:0 16px 14px"><div class="alert-box alert-good">✅ 進貨佔比良好（${expRatio}%）</div></div>`}
+    </div>
+    ${rec.note ? `<div class="card"><div style="padding:12px 16px;font-size:13px">📝 ${rec.note}</div></div>` : ''}`;
+  }
+  document.getElementById('perfDisplay').innerHTML = html;
+}
+
+async function submitPerf() {
+  const data = {
+    date: document.getElementById('perf-date').value || today(),
+    scallion: document.getElementById('perf-scallion').value,
+    dumpling: document.getElementById('perf-dumpling').value,
+    purchase: document.getElementById('perf-purchase').value,
+    other: document.getElementById('perf-other').value,
+    revenue: document.getElementById('perf-revenue').value,
+    note: document.getElementById('perf-note').value,
+    who: document.getElementById('perf-who').value,
+    status: 'approved', id: Date.now()
+  };
+  if (!data.revenue) { alert('請填寫營業額'); return; }
+  const fid = await pushRecord('performances', data);
+  DB.performances.push({ ...data, _fid: fid });
+  saveLocalDB();
+  perfCurrentDate = data.date;
+  document.getElementById('perfDate').value = data.date;
+  renderPerf(); generateReport();
+  closeModal('perf');
+}
+
+async function doDeletePerf(id, fid) {
+  if (!confirm('確定刪除？')) return;
+  await deleteRecord('performances', id, fid);
+  renderPerf(); generateReport();
+}
+
+// ══════════════════════════════
+// STAFF
+// ══════════════════════════════
+let staffCurrentDate = today();
+function loadStaffDay() {
+  staffCurrentDate = document.getElementById('staffDate').value || today();
+  renderStaff();
+}
+
+function renderStaff() {
+  const date = staffCurrentDate;
+  const records = DB.staff.filter(s => s.date===date);
+  let html = '';
+  let totalHours = 0, totalWage = 0;
+
+  if (!records.length) {
+    html = `<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">這天還沒有出勤記錄</div></div>`;
+  } else {
+    html = `<div class="card"><div class="card-header mgmt">👥 出勤紀錄</div>
+      <table class="staff-table">
+        <tr><th>姓名</th><th>狀態</th><th>工時</th><th>薪資</th><th></th></tr>`;
+    records.forEach(s => {
+      const h = calcHours(s.in, s.out);
+      totalHours += h;
+      const wage = h * HOURLY_RATE;
+      totalWage += wage;
+      const statusLabel = { work:'出勤', leave:'事假', sick:'病假', absent:'未到' }[s.status_val||s.status] || '出勤';
+      const badgeCls = s.status_val==='work'||s.status==='work' ? 'badge-work' : s.status_val==='leave'||s.status==='leave' ? 'badge-leave' : 'badge-absent';
+      html += `<tr>
+        <td style="font-weight:700">${s.name}</td>
+        <td><span class="badge ${badgeCls}">${statusLabel}</span></td>
+        <td>${h > 0 ? `<span class="hours-badge">${h.toFixed(1)}h</span>` : '-'}</td>
+        <td style="font-weight:700;color:var(--red)">${wage > 0 ? '$'+fmt(wage) : '-'}</td>
+        <td><button onclick="doDeleteStaff('${s.id}','${s._fid||''}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer">✕</button></td>
+      </tr>`;
+    });
+    html += `</table></div>`;
+    if (totalHours > 0) {
+      html += `<div class="card"><div class="card-header gold">💵 當日薪資總覽</div>
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between">
+          <span style="font-size:13px;color:var(--muted)">總出勤工時</span><span class="hours-badge" style="font-size:14px">${totalHours.toFixed(1)} 小時</span>
+        </div>
+        <div style="padding:14px 16px;background:var(--red-light);display:flex;justify-content:space-between">
+          <span style="font-size:15px;font-weight:900;color:var(--red)">💰 當日薪資合計</span>
+          <span style="font-size:20px;font-weight:900;color:var(--red)">$${fmt(totalWage)}</span>
+        </div>
+      </div>`;
+    }
+  }
+  document.getElementById('staffDisplay').innerHTML = html;
+}
+
+async function submitStaff() {
+  const data = {
+    date: document.getElementById('staff-date').value || today(),
+    name: document.getElementById('staff-name').value,
+    status_val: document.getElementById('staff-status').value,
+    in: document.getElementById('staff-in').value,
+    out: document.getElementById('staff-out').value,
+    note: document.getElementById('staff-note').value,
+    who: document.getElementById('staff-who').value,
+    id: Date.now()
+  };
+  if (!data.name) { alert('請選擇員工姓名'); return; }
+  const fid = await pushRecord('staff', data);
+  DB.staff.push({ ...data, _fid: fid });
+  saveLocalDB();
+  staffCurrentDate = data.date;
+  document.getElementById('staffDate').value = data.date;
+  renderStaff(); generateReport();
+  closeModal('staff');
+}
+
+async function doDeleteStaff(id, fid) {
+  if (!confirm('確定刪除？')) return;
+  await deleteRecord('staff', id, fid);
+  renderStaff(); generateReport();
+}
+
+// ══════════════════════════════
+// STAFF LIST MANAGEMENT
+// ══════════════════════════════
+function getStaffList() { return JSON.parse(localStorage.getItem('lailaiStaffList') || JSON.stringify(DEFAULT_STAFF)); }
+function saveStaffList(list) { localStorage.setItem('lailaiStaffList', JSON.stringify(list)); }
+
+function renderStaffPicker() {
+  const list = getStaffList();
+  document.getElementById('staff-picker').innerHTML = list.map(name =>
+    `<button class="staff-chip" onclick="selectStaffChip(this,'${name}')">${name}</button>`
+  ).join('');
+  document.getElementById('staff-name').value = '';
+  document.getElementById('staff-selected-display').textContent = '';
+}
+
+function selectStaffChip(el, name) {
+  document.querySelectorAll('.staff-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('staff-name').value = name;
+  document.getElementById('staff-selected-display').textContent = '已選：' + name;
+}
+
+function openManageStaff() { renderStaffListEdit(); document.getElementById('modal-manage-staff').classList.add('open'); }
+function renderStaffListEdit() {
+  const list = getStaffList();
+  document.getElementById('staff-list-edit').innerHTML = list.map((name,i) =>
+    `<div class="staff-list-item"><span>${name}</span><button class="btn-remove-staff" onclick="removeStaffMember(${i})">✕</button></div>`
+  ).join('');
+}
+function addStaffMember() {
+  const input = document.getElementById('new-staff-input');
+  const name = input.value.trim();
+  if (!name) return;
+  const list = getStaffList();
+  if (list.includes(name)) { alert('已有此名字'); return; }
+  list.push(name); saveStaffList(list); input.value='';
+  renderStaffListEdit(); renderStaffPicker();
+}
+function removeStaffMember(idx) {
+  const list = getStaffList(); list.splice(idx,1); saveStaffList(list);
+  renderStaffListEdit(); renderStaffPicker();
+}
+
+// ══════════════════════════════
+// MONTHLY REPORT (升級版)
+// ══════════════════════════════
+function generateReport() {
+  const el = document.getElementById('reportContent');
+  if (!el) return;
+  const month = document.getElementById('reportMonth').value || today().slice(0,7);
+  const [yr, mo] = month.split('-').map(Number);
+
+  const expenses = DB.expenses.filter(e => e.date && e.date.startsWith(month) && (e.status==='approved'||!e.status));
+  const perfs = DB.performances.filter(p => p.date && p.date.startsWith(month) && (p.status==='approved'||!p.status));
+  const staff = DB.staff.filter(s => s.date && s.date.startsWith(month));
+
+  const totalExpense = expenses.reduce((s,e) => s+Number(e.amount), 0);
+  const totalRevenue = perfs.reduce((s,p) => s+Number(p.revenue), 0);
+  const totalHours = staff.reduce((s,r) => s+calcHours(r.in,r.out), 0);
+  const totalWage = totalHours * HOURLY_RATE;
+  const totalAllExpense = totalExpense + totalWage;
+  const totalProfit = totalRevenue - totalAllExpense;
+  const scallionTotal = perfs.reduce((s,p) => s+Number(p.scallion||0), 0);
+  const dumplingTotal = perfs.reduce((s,p) => s+Number(p.dumpling||0), 0);
+  const workDays = perfs.length;
+  const avgDaily = workDays > 0 ? Math.round(totalRevenue / workDays) : 0;
+  const marginPct = totalRevenue > 0 ? ((totalProfit/totalRevenue)*100).toFixed(1) : 0;
+  const expRatio = totalRevenue > 0 ? (totalExpense/totalRevenue*100).toFixed(1) : 0;
+  const wageRatio = totalRevenue > 0 ? (totalWage/totalRevenue*100).toFixed(1) : 0;
+
+  // Cat breakdown
+  const catBreakdown = {};
+  expenses.forEach(e => { catBreakdown[e.cat] = (catBreakdown[e.cat]||0)+Number(e.amount); });
+  if (totalWage > 0) catBreakdown['💵 員工薪資'] = totalWage;
+
+  const warns = expenses.filter(e => e.warn);
+  const staffHours = {};
+  staff.forEach(s => { const h=calcHours(s.in,s.out); staffHours[s.name]=(staffHours[s.name]||0)+h; });
+  const topStaff = Object.entries(staffHours).filter(([,h])=>h>0).sort((a,b)=>b[1]-a[1]);
+
+  // Alert levels
+  const expLevel = Number(expRatio) <= 35 ? 'good' : Number(expRatio) <= 50 ? 'ok' : 'bad';
+  const expLevelLabel = Number(expRatio) <= 35 ? '優良' : Number(expRatio) <= 50 ? '尚可' : '欠佳';
+  const wageLevel = Number(wageRatio) <= 25 ? 'good' : Number(wageRatio) <= 35 ? 'ok' : 'bad';
+  const wageLevelLabel = Number(wageRatio) <= 25 ? '優良' : Number(wageRatio) <= 35 ? '尚可' : '欠佳';
+
+  let html = `
+  <div class="report-card">
+    <div class="report-header"><span>📅 ${yr}年${mo}月 月報</span><span>${workDays} 營業天</span></div>
+    <div class="stats-grid">
+      <div class="stat-cell"><div class="stat-label">📈 總營業額</div><div class="stat-value" style="color:var(--green)">$${fmt(totalRevenue)}</div></div>
+      <div class="stat-cell"><div class="stat-label">💰 實賺金額</div><div class="stat-value ${totalProfit>=0?'profit-positive':'profit-negative'}" style="font-size:18px">${totalProfit>=0?'+':''}$${fmt(totalProfit)}</div></div>
+      <div class="stat-cell"><div class="stat-label">📊 毛利率</div><div class="stat-value">${marginPct}%</div></div>
+      <div class="stat-cell"><div class="stat-label">📆 平均每日</div><div class="stat-value">$${fmt(avgDaily)}</div></div>
+    </div>
+    <div class="report-row"><span class="report-key">📦 進貨＋管銷</span><span class="report-val" style="color:var(--muted)">$${fmt(totalExpense)}</span></div>
+    <div class="report-row"><span class="report-key">💵 員工薪資</span><span class="report-val" style="color:var(--muted)">$${fmt(totalWage)}</span></div>
+    <div class="report-row" style="background:#f9f6f1"><span class="report-key" style="font-weight:900">💸 總支出合計</span><span class="report-val" style="color:var(--red)">$${fmt(totalAllExpense)}</span></div>
+  </div>
+
+  <div class="report-card">
+    <div class="report-header" style="background:var(--gold)">⚠️ 佔比健康分析</div>
+    <div style="padding:14px 16px">
+      <div class="alert-box alert-${expLevel}" style="margin-bottom:10px">
+        📦 <div><div style="font-weight:700">進貨佔比 ${expRatio}% ── <span>${expLevelLabel}</span></div><div style="font-size:11px;color:var(--muted);margin-top:2px">建議控制在 35% 以內</div></div>
+      </div>
+      <div class="alert-box alert-${wageLevel}">
+        👥 <div><div style="font-weight:700">人事佔比 ${wageRatio}% ── <span>${wageLevelLabel}</span></div><div style="font-size:11px;color:var(--muted);margin-top:2px">建議控制在 25% 以內</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="report-card">
+    <div class="report-header">🏆 銷售統計</div>
+    <div class="report-row"><span class="report-key">🧅 蔥抓餅合計</span><span class="report-val">${fmt(scallionTotal)} 顆</span></div>
+    <div class="report-row"><span class="report-key">🥟 小籠包合計</span><span class="report-val">${fmt(dumplingTotal)} 籠</span></div>
+    <div class="report-row"><span class="report-key">📅 營業天數</span><span class="report-val">${workDays} 天</span></div>
+    <div class="report-row"><span class="report-key">📊 平均每日營業額</span><span class="report-val">$${fmt(avgDaily)}</span></div>
+  </div>
+
+  <div class="report-card">
+    <div class="report-header">📦 支出分類佔比</div>
+    <div class="bar-wrap">
+      ${Object.entries(catBreakdown).sort((a,b)=>b[1]-a[1]).map(([cat,amt]) => `
+      <div class="bar-row">
+        <div class="bar-label"><span>${cat}</span><span>$${fmt(amt)}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${totalAllExpense>0?(amt/totalAllExpense*100).toFixed(0):0}%"></div></div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  ${warns.length > 0 ? `
+  <div class="report-card">
+    <div class="report-header" style="background:var(--warn)">⛔️ 本月漲價項目（${warns.length}筆）</div>
+    ${warns.map(w=>`<div class="report-row"><span class="report-key">${w.name}</span><span class="report-val" style="color:var(--warn);font-size:12px">${w.warn}</span></div>`).join('')}
+  </div>` : ''}
+
+  <div class="report-card">
+    <div class="report-header">👥 員工工時＆薪資</div>
+    ${topStaff.length > 0 ? topStaff.map(([name,h]) => `
+    <div class="report-row">
+      <span class="report-key" style="font-weight:700">${name}</span>
+      <span><span class="hours-badge">${h.toFixed(1)}h</span> <span style="font-weight:900;color:var(--red);margin-left:6px">$${fmt(h*HOURLY_RATE)}</span></span>
+    </div>`).join('') : `<div class="empty"><div class="empty-text">尚無出勤記錄</div></div>`}
+    ${totalHours > 0 ? `<div class="report-row" style="background:var(--red-light)">
+      <span class="report-key" style="font-weight:900">月薪資合計 (${totalHours.toFixed(1)}h)</span>
+      <span style="font-size:18px;font-weight:900;color:var(--red)">$${fmt(totalWage)}</span>
+    </div>` : ''}
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════
+// 🆕 ANNUAL REPORT
+// ══════════════════════════════
+let annualTab = 'overview';
+function switchAnnualTab(tab, el) {
+  annualTab = tab;
+  document.querySelectorAll('[id^="an-tab-"]').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('annual-overview').style.display = tab==='overview' ? 'block' : 'none';
+  document.getElementById('annual-compare').style.display = tab==='compare' ? 'block' : 'none';
+  document.getElementById('annual-yearly').style.display = tab==='yearly' ? 'block' : 'none';
+  if (tab==='overview'||tab==='yearly') renderAnnual();
+}
+
+function renderAnnual() {
+  const year = +document.getElementById('annual-year').value;
+  if (annualTab === 'overview') renderAnnualOverview(year);
+  if (annualTab === 'yearly') renderYearlyCompare();
+}
+
+function getMonthRevenue(y, m) {
+  const prefix = `${y}-${String(m).padStart(2,'0')}`;
+  return DB.performances.filter(p => p.date && p.date.startsWith(prefix) && (p.status==='approved'||!p.status))
+    .reduce((s,p) => s+Number(p.revenue), 0);
+}
+function getMonthProfit(y, m) {
+  const prefix = `${y}-${String(m).padStart(2,'0')}`;
+  const rev = getMonthRevenue(y, m);
+  const exp = DB.expenses.filter(e => e.date && e.date.startsWith(prefix)).reduce((s,e)=>s+Number(e.amount),0);
+  const staff = DB.staff.filter(s => s.date && s.date.startsWith(prefix));
+  const wage = staff.reduce((s,r)=>s+calcHours(r.in,r.out)*HOURLY_RATE,0);
+  return rev - exp - wage;
+}
+
+function renderAnnualOverview(year) {
+  const el = document.getElementById('annual-overview');
+  let rows = [];
+  let yearTotal = 0;
+  for (let m = 1; m <= 12; m++) {
+    const rev = getMonthRevenue(year, m);
+    const profit = getMonthProfit(year, m);
+    const prevRev = m > 1 ? getMonthRevenue(year, m-1) : null;
+    const growth = prevRev !== null && prevRev > 0 ? ((rev-prevRev)/prevRev*100).toFixed(1) : null;
+    yearTotal += rev;
+    rows.push({ m, rev, profit, growth });
+  }
+
+  let html = `<div class="report-card">
+    <div class="report-header"><span>📅 ${year}年 月度總覽</span><span>合計 $${fmt(yearTotal)}</span></div>
+    ${rows.map(r => `
+    <div class="month-row">
+      <div>
+        <div style="font-weight:700">${r.m} 月</div>
+        ${r.growth !== null ? `<div class="${Number(r.growth)>=0?'growth-up':'growth-down'}">${Number(r.growth)>=0?'▲':'▼'} ${Math.abs(r.growth)}% vs 上月</div>` : ''}
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:900;color:${r.rev>0?'var(--ink)':'var(--muted)'}">${r.rev>0?'$'+fmt(r.rev):'—'}</div>
+        ${r.rev>0?`<div style="font-size:11px;color:${r.profit>=0?'var(--green)':'var(--red);'}">${r.profit>=0?'+':''}$${fmt(r.profit)}</div>`:''}
+      </div>
+    </div>`).join('')}
+  </div>`;
+  el.innerHTML = html;
+}
+
+function renderCompare() {
+  const a = document.getElementById('cmp-a').value;
+  const b = document.getElementById('cmp-b').value;
+  if (!a || !b) return;
+
+  const getStats = (month) => {
+    const [y, m] = month.split('-').map(Number);
+    const rev = getMonthRevenue(y, m);
+    const profit = getMonthProfit(y, m);
+    const days = DB.performances.filter(p => p.date && p.date.startsWith(month)).length;
+    return { rev, profit, days, avg: days > 0 ? Math.round(rev/days) : 0 };
+  };
+
+  const sa = getStats(a);
+  const sb = getStats(b);
+  const revDiff = sb.rev - sa.rev;
+  const revGrowth = sa.rev > 0 ? ((revDiff/sa.rev)*100).toFixed(1) : null;
+  const profitDiff = sb.profit - sa.profit;
+
+  const el = document.getElementById('compare-result');
+  el.innerHTML = `
+  <div class="report-card">
+    <div class="report-header" style="background:var(--blue)">📊 比較結果：${a} vs ${b}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border)">
+      <div style="padding:14px 16px;border-right:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${a}</div>
+        <div style="font-size:20px;font-weight:900;color:var(--green)">$${fmt(sa.rev)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">毛利 $${fmt(sa.profit)}</div>
+        <div style="font-size:12px;color:var(--muted)">營業 ${sa.days} 天 ∙ 日均 $${fmt(sa.avg)}</div>
+      </div>
+      <div style="padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${b}</div>
+        <div style="font-size:20px;font-weight:900;color:var(--green)">$${fmt(sb.rev)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">毛利 $${fmt(sb.profit)}</div>
+        <div style="font-size:12px;color:var(--muted)">營業 ${sb.days} 天 ∙ 日均 $${fmt(sb.avg)}</div>
+      </div>
+    </div>
+    <div class="report-row" style="background:${revDiff>=0?'var(--green-light)':'var(--warn-light)'}">
+      <span style="font-weight:700">營業額成長</span>
+      <span style="font-size:18px;font-weight:900;color:${revDiff>=0?'var(--green)':'var(--red)'}">
+        ${revDiff>=0?'+':''}$${fmt(revDiff)}
+        ${revGrowth !== null ? `<span style="font-size:12px;font-weight:700">(${revGrowth>=0?'+':''}${revGrowth}%)</span>` : ''}
+      </span>
+    </div>
+    <div class="report-row">
+      <span class="report-key">毛利變化</span>
+      <span class="report-val" style="color:${profitDiff>=0?'var(--green)':'var(--red)'}">${profitDiff>=0?'+':''}$${fmt(profitDiff)}</span>
+    </div>
+    <div class="report-row">
+      <span class="report-key">日均營業額變化</span>
+      <span class="report-val" style="color:${sb.avg-sa.avg>=0?'var(--green)':'var(--red)'}">${sb.avg-sa.avg>=0?'+':''}$${fmt(sb.avg-sa.avg)}</span>
+    </div>
+  </div>`;
+}
+
+function renderYearlyCompare() {
+  const el = document.getElementById('annual-yearly');
+  const cy = new Date().getFullYear();
+  let rows = [];
+  for (let y = cy; y >= cy-4; y--) {
+    let total = 0;
+    for (let m = 1; m <= 12; m++) total += getMonthRevenue(y, m);
+    rows.push({ y, total });
+  }
+
+  let html = `<div class="report-card"><div class="report-header">📈 年度對比（近5年）</div>`;
+  rows.forEach((r, i) => {
+    const prev = rows[i+1];
+    const growth = prev && prev.total > 0 ? ((r.total-prev.total)/prev.total*100).toFixed(1) : null;
+    html += `<div class="month-row">
+      <div>
+        <div style="font-weight:700">${r.y} 年</div>
+        ${growth !== null ? `<div class="${Number(growth)>=0?'growth-up':'growth-down'}">${Number(growth)>=0?'▲':'▼'} ${Math.abs(growth)}% vs ${r.y-1}年</div>` : ''}
+      </div>
+      <div style="font-size:18px;font-weight:900;color:${i===0?'var(--red)':'var(--ink)'}">${r.total>0?'$'+fmt(r.total):'—'}</div>
+    </div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════
+// SEARCH
+// ══════════════════════════════
+function runSearch() {
+  const kw = document.getElementById('search-keyword').value.trim().toLowerCase();
+  const cat = document.getElementById('search-cat').value;
+  const from = document.getElementById('search-date-from').value;
+  const to = document.getElementById('search-date-to').value;
+
+  let results = DB.expenses.filter(e => {
+    const matchKw = !kw || e.name.toLowerCase().includes(kw);
+    const matchCat = !cat || e.cat === cat;
+    const matchFrom = !from || e.date >= from;
+    const matchTo = !to || e.date <= to;
+    return matchKw && matchCat && matchFrom && matchTo;
+  }).sort((a,b) => b.date.localeCompare(a.date));
+
+  const summary = document.getElementById('search-summary');
+  const container = document.getElementById('search-results');
+
+  if (!results.length) {
+    summary.innerHTML = '';
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">找不到符合的項目</div></div>`;
+    return;
+  }
+
+  const totalAmt = results.reduce((s,e) => s+Number(e.amount), 0);
+  const avgAmt = totalAmt / results.length;
+  const minItem = results.reduce((a,b) => Number(a.amount)<Number(b.amount)?a:b);
+  const maxItem = results.reduce((a,b) => Number(a.amount)>Number(b.amount)?a:b);
+
+  summary.innerHTML = `<div class="card">
+    <div class="card-header red">📊 搜尋結果統計（${results.length} 筆）</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr">
+      <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">最低價</div>
+        <div style="font-size:16px;font-weight:900;color:var(--green)">$${fmt(minItem.amount)}</div>
+        <div style="font-size:11px;color:var(--muted)">${minItem.date}</div>
+      </div>
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">最高價</div>
+        <div style="font-size:16px;font-weight:900;color:var(--red)">$${fmt(maxItem.amount)}</div>
+        <div style="font-size:11px;color:var(--muted)">${maxItem.date}</div>
+      </div>
+      <div style="padding:12px 16px;border-right:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">平均價</div>
+        <div style="font-size:16px;font-weight:900">$${fmt(Math.round(avgAmt))}</div>
+      </div>
+      <div style="padding:12px 16px">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">合計</div>
+        <div style="font-size:16px;font-weight:900">$${fmt(totalAmt)}</div>
+      </div>
+    </div>
+  </div>`;
+
+  let html = `<div class="card"><div class="card-header gold">📋 明細（新→舊）</div>
+    <table class="expense-table"><tr><th>日期</th><th>品項</th><th>數量</th><th style="text-align:right">金額</th></tr>`;
+  results.forEach(e => {
+    html += `<tr>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${e.date}</td>
+      <td>${e.name}${e.warn?`<span class="warn-badge">⛔️漲</span>`:''}<span style="font-size:10px;color:var(--muted);display:block">${e.cat}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${e.qty||'-'}</td>
+      <td class="amt">$${fmt(e.amount)}</td>
+    </tr>`;
+  });
+  html += '</table></div>';
+  container.innerHTML = html;
+}
+
+// ══════════════════════════════
+// MODAL
+// ══════════════════════════════
+function openModal(type) {
+  const d = today();
+  if (type==='expense') document.getElementById('exp-date').value = expenseCurrentDate||d;
+  if (type==='perf') document.getElementById('perf-date').value = perfCurrentDate||d;
+  if (type==='staff') { document.getElementById('staff-date').value = staffCurrentDate||d; renderStaffPicker(); }
+  document.getElementById('modal-'+type).classList.add('open');
+}
+function closeModal(type) { document.getElementById('modal-'+type).classList.remove('open'); }
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) { if (e.target===this) this.classList.remove('open'); });
+});
+
+// ══════════════════════════════
+// INIT
+// ══════════════════════════════
+// 直接啟動，不需要登入
+localStorage.setItem('lailai_brand', '萊萊蔥抓餅');
+document.getElementById('main-header').style.display = 'flex';
+document.getElementById('main-tabs').style.display = 'flex';
+initApp('萊萊蔥抓餅');
+if (window._fbReady) syncAll();
+else document.addEventListener('firebase-ready', syncAll);
+</script>
+</body>
+</html>
